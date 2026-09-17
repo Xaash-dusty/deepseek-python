@@ -1,17 +1,16 @@
-from notes import (
-    DATA_PATH,
-    add_note,
-    delete_note,
-    edit_note,
-    find_by_id,
-    find_by_name,
-    load_notes,
-)
+import json
+from pathlib import Path
+
+from models import Note, Notebook
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = BASE_DIR.parent.parent.parent / "data" / "notes.json"
 
 
-def show_note(note: dict) -> None:
-    for key, value in note.items():
-        print(f"{key}: {value}")
+def show_note(note_id: int, note: Note) -> None:
+    print(f"id: {note_id}")
+    print(f"name: {note.name}")
+    print(f"content: {note.content}")
     print("_" * 50)
 
 
@@ -19,16 +18,23 @@ def main():
     print("CLI-заметки. Введите 'help' для списка команд.")
     print("Введите 'quit' для выхода.")
 
-    notes = load_notes(DATA_PATH)
-
+    try:
+        nb = Notebook()
+        nb.load(DATA_PATH)
+    except TypeError as e:
+        print(e)
+        return
+    except json.JSONDecodeError:
+        print("Файл битый")
+        return
     while True:
         try:
-            command = input("> ").strip().lower()
+            command = input("> ").strip()
         except (EOFError, KeyboardInterrupt):
             break
 
         parts = command.split()
-        cmd = parts[0]
+        cmd = parts[0].lower()
         args = parts[1:]
 
         match cmd:
@@ -37,11 +43,11 @@ def main():
             case "help":
                 print("Команды: add, list, show, find, edit, delete, quit")
             case "list":
-                if not notes:
+                if not nb:
                     print("Заметок нет")
                     continue
-                for note in notes:
-                    print(f"{note['id']}: {note['name']}")
+                for note_id, note in nb.all():
+                    print(f"{note_id}: {note.name}")
             case "show":
                 if not args:
                     print("Вы не передали аргументы")
@@ -53,45 +59,47 @@ def main():
                     print("Вы ввели некорректный id, нужно натуральное число")
                     continue
 
-                note = find_by_id(notes, note_id)
+                note = nb.find_by_id(note_id)
 
                 if note is None:
                     print(f"Заметка с id {note_id} не найдена")
                     continue
 
-                show_note(note)
+                show_note(note_id, note)
             case "add":
                 if not args:
                     print("Вы не передали аргументы")
                     continue
 
                 name = " ".join(args)
+
                 print(f"Имя: {name}")
                 content = input("Контент: ")
 
                 try:
-                    note_id = add_note(notes, name, content, DATA_PATH)
+                    note_id = nb.add(name, content)
+                    nb.save(DATA_PATH)
                     print(f"Заметка успешно добавлена, id: {note_id}")
                 except ValueError as e:
-                    print(f"Ошибка: {e}")
+                    print(e)
             case "find":
                 full = "--more" in args
                 if full:
-                    args = args[:args.index("--more")]
+                    args = args[: args.index("--more")]
                 search_term = " ".join(args)
 
-                result = find_by_name(notes, search_term)
+                result = nb.find_by_name(search_term)
 
                 if not result:
                     print("Заметки не найдены")
                     continue
 
                 if full:
-                    for note in result:
-                        show_note(note)
+                    for note_id, note in result:
+                        show_note(note_id, note)
                 else:
-                    for note in result:
-                        print(f"{note['id']}: {note['name']}")
+                    for note_id, note in result:
+                        print(f"{note_id}: {note.name}")
             case "delete":
                 if not args:
                     print("Вы не передали аргументы")
@@ -103,7 +111,8 @@ def main():
                     print("Вы ввели некорректный id, нужно натуральное число")
                     continue
 
-                is_deleted = delete_note(notes, note_id, DATA_PATH)
+                is_deleted = nb.delete(note_id)
+                nb.save(DATA_PATH)
 
                 if is_deleted:
                     print("Заметка успешно удалена")
@@ -119,15 +128,17 @@ def main():
                     print("Вы ввели некорректный id, нужно натуральное число")
                     continue
 
-                new_content = input("Новое содержимое заметки: ")
-                is_edited = edit_note(notes, note_id, new_content, DATA_PATH)
-
-                if is_edited:
-                    print(f"Содержимое заметки успешно обновлено, id: {note_id}")
-                else:
+                note = nb.find_by_id(note_id)
+                if note is None:
                     print(f"Заметка с id {note_id} не найдена")
+                    continue
+
+                new_content = input("Новое содержимое заметки: ")
+                note.edit(new_content)
+                nb.save(DATA_PATH)
+                print(f"Содержимое заметки успешно обновлено, id: {note_id}")
             case _:
-                print(f"Неизвестная команда: {cmd}")
+                print(f"Неизвестная команда: {cmd}\nНапишите `help` чтобы получить инструкции")
 
     print("\nВыход")
 
